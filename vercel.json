@@ -3,5 +3,12 @@
   "builds": [
     { "src": "api/**/*.js", "use": "@vercel/node" },
     { "src": "public/**", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "^/$", "dest": "/api/app" },
+    { "src": "^/login/?$", "dest": "/login.html" },
+    { "src": "^/index\\.html$", "dest": "/api/app" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/api/$1" }
   ]
 }

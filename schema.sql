@@ -46,3 +46,16 @@ create table if not exists tasks (
   source text,
   unique (scope, area, title)
 );
+
+-- Magic-link / code auth (temporary dev-code display for Admins)
+create table if not exists auth_codes (
+  id bigserial primary key,
+  user_id bigint not null references users(id) on delete cascade,
+  code_hash text not null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  consumed_at timestamptz
+);
+
+create index if not exists auth_codes_user_idx on auth_codes(user_id);
+create index if not exists auth_codes_expires_idx on auth_codes(expires_at);

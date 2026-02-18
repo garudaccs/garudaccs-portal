@@ -1,13 +1,15 @@
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 
+function getCookie(name){
+  const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[-.$?*|{}()\[\]\\\/\+^]/g,'\\$&') + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 const state = {
-  token: localStorage.getItem('gccs_token') || null,
+  token: localStorage.getItem('gccs_token') || getCookie('gccs_token') || null,
   me: null,
-  charts: {
-    model: null,
-    agent: null,
-  }
+  charts: { model: null, agent: null }
 };
 
 function setMsg(el, msg, kind=''){
@@ -33,12 +35,6 @@ async function api(path, { method='GET', body, headers={} } = {}){
     throw new Error(msg);
   }
   return data;
-}
-
-function show(view){
-  $('#loginView').style.display = view === 'login' ? '' : 'none';
-  $('#appView').style.display = view === 'app' ? '' : 'none';
-  $('#logoutBtn').style.display = view === 'app' ? '' : 'none';
 }
 
 function setWhoami(){
@@ -172,51 +168,27 @@ async function loadTasksTable(){
   }
 }
 
-async function initAfterLogin(){
-  show('app');
-  await loadMe();
-  setTabs('overview');
-  await loadOverview();
-  await loadTokensTable();
-  await loadAgentsTable();
-  await loadTasksTable();
+async function init(){
+  if(!state.token){ window.location.href = '/login'; return; }
+
+  try{
+    await loadMe();
+    $('#logoutBtn').style.display = '';
+    setTabs('overview');
+    await loadOverview();
+    await loadTokensTable();
+    await loadAgentsTable();
+    await loadTasksTable();
+  }catch(e){
+    localStorage.removeItem('gccs_token');
+    window.location.href = '/login';
+  }
 }
 
-$('#loginForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  setMsg($('#loginMsg'), '');
-  const fd = new FormData(e.target);
-  try{
-    const data = await api('/api/auth/login', { method:'POST', body:{ email: fd.get('email'), password: fd.get('password') } });
-    state.token = data.token;
-    localStorage.setItem('gccs_token', state.token);
-    await initAfterLogin();
-  }catch(err){
-    setMsg($('#loginMsg'), err.message);
-  }
-});
-
-$('#bootstrapForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  setMsg($('#loginMsg'), '');
-  const fd = new FormData(e.target);
-  try{
-    await api('/api/admin/bootstrap', { method:'POST', body:{
-      secret: fd.get('secret'),
-      email: fd.get('email'),
-      password: fd.get('password')
-    }});
-    setMsg($('#loginMsg'), 'Admin created. You can now login.');
-  }catch(err){
-    setMsg($('#loginMsg'), err.message);
-  }
-});
-
-$('#logoutBtn').addEventListener('click', () => {
-  state.token = null;
-  state.me = null;
+$('#logoutBtn').addEventListener('click', async () => {
+  try{ await api('/api/auth/logout', { method:'POST' }); }catch{}
   localStorage.removeItem('gccs_token');
-  show('login');
+  window.location.href = '/login';
 });
 
 $('#refreshTokens').addEventListener('click', async () => {
@@ -249,8 +221,4 @@ $$('.tab').forEach(btn => btn.addEventListener('click', async () => {
   }
 }));
 
-(async () => {
-  if(!state.token){ show('login'); return; }
-  try{ await initAfterLogin(); }
-  catch(e){ localStorage.removeItem('gccs_token'); state.token=null; show('login'); }
-})();
+init();
