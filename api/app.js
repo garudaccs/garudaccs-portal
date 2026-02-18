@@ -8,7 +8,7 @@ function html(){
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Garuda CCS — Command & Control Station</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/public/styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -122,7 +122,7 @@ function html(){
   </main>
 
   <footer class="footer muted">Garuda CCS — Command &amp; Control Station</footer>
-  <script type="module" src="/app.js"></script>
+  <script type="module" src="/public/app.js"></script>
 </body>
 </html>`;
 }
