@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { json } from '../_lib/auth.js';
-import { q } from '../_lib/db.js';
-import { withAuth, allowRoles } from '../_lib/middleware.js';
+import { json } from '../../lib/auth.js';
+import { q } from '../../lib/db.js';
+import { withAuth, allowRoles } from '../../lib/middleware.js';
 
 const Body = z.object({
   id: z.union([z.string(), z.number()]),

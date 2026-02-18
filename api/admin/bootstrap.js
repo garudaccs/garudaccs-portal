@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { q } from '../_lib/db.js';
-import { json } from '../_lib/auth.js';
+import { q } from '../../lib/db.js';
+import { json } from '../../lib/auth.js';
 
 const Body = z.object({
   secret: z.string().min(1),

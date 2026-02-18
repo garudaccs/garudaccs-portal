@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { json } from '../_lib/auth.js';
-import { q } from '../_lib/db.js';
-import { withAuth, allowRoles } from '../_lib/middleware.js';
+import { json } from '../../lib/auth.js';
+import { q } from '../../lib/db.js';
+import { withAuth, allowRoles } from '../../lib/middleware.js';
 
 function parseTracker(md){
   const lines = md.split(/\r?\n/);

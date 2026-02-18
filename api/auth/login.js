@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { q } from '../_lib/db.js';
-import { json, signToken, roleScopeView } from '../_lib/auth.js';
+import { q } from '../../lib/db.js';
+import { json, signToken, roleScopeView } from '../../lib/auth.js';
 
 const Body = z.object({
   email: z.string().email(),
