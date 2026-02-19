@@ -1,0 +1,673 @@
+From d2ff5536945edd5245e094074a189af65ae856bf Mon Sep 17 00:00:00 2001
+From: Prakash
+ <prakash@GARUDACCS-VM.2ebhdqqhnuvexmxvddcl42poof.rx.internal.cloudapp.net>
+Date: Thu, 19 Feb 2026 10:56:40 +0000
+Subject: [PATCH 1/3] Add task board, decisions, reminders, comms,
+ overview/team + migrations
+
+---
+ api/app.js                 |  0
+ api/communications/add.js  | 36 ++++++++++++++++++++
+ api/communications/list.js | 36 ++++++++++++++++++++
+ api/decisions/add.js       | 40 +++++++++++++++++++++++
+ api/decisions/list.js      | 33 +++++++++++++++++++
+ api/overview/home.js       | 67 ++++++++++++++++++++++++++++++++++++++
+ api/reminders/list.js      | 37 +++++++++++++++++++++
+ api/reminders/upsert.js    | 57 ++++++++++++++++++++++++++++++++
+ api/tasks/list.js          | 36 +++++++++++++++++---
+ api/tasks/sync.js          |  6 ++--
+ api/tasks/upsert.js        | 61 ++++++++++++++++++++++++++++++++++
+ api/team/visibility.js     | 52 +++++++++++++++++++++++++++++
+ package.json               |  1 +
+ public/styles.css          | 36 ++++++++++++++++++++
+ scripts/migrate.js         | 26 +++++++++++++++
+ 15 files changed, 518 insertions(+), 6 deletions(-)
+ mode change 100644 => 100755 api/app.js
+ create mode 100644 api/communications/add.js
+ create mode 100644 api/communications/list.js
+ create mode 100644 api/decisions/add.js
+ create mode 100644 api/decisions/list.js
+ create mode 100644 api/overview/home.js
+ create mode 100644 api/reminders/list.js
+ create mode 100644 api/reminders/upsert.js
+ create mode 100644 api/tasks/upsert.js
+ create mode 100644 api/team/visibility.js
+ create mode 100644 scripts/migrate.js
+
+diff --git a/api/app.js b/api/app.js
+old mode 100644
+new mode 100755
+diff --git a/api/communications/add.js b/api/communications/add.js
+new file mode 100644
+index 0000000..b11f0f6
+--- /dev/null
++++ b/api/communications/add.js
+@@ -0,0 +1,36 @@
++import { z } from 'zod';
++import { json } from '../../lib/auth.js';
++import { q } from '../../lib/db.js';
++import { withAuth, allowRoles } from '../../lib/middleware.js';
++
++const Body = z.object({
++  timestamp: z.string().optional().nullable(),
++  from_agent: z.string().optional().nullable(),
++  to_agent: z.string().optional().nullable(),
++  summary: z.string().min(1),
++  scope: z.enum(['adhiratha','personal','minervainfo']),
++  message_type: z.string().optional().nullable()
++});
++
++export default withAuth(allowRoles(['Admin','Team'], async function handler(req, res){
++  if(req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
++  const parsed = Body.safeParse(JSON.parse(req.body || '{}'));
++  if(!parsed.success) return json(res, 400, { error: 'Invalid payload' });
++
++  const b = parsed.data;
++  if(req.user.scopeView !== 'all' && b.scope !== req.user.scopeView){
++    return json(res, 403, { error: 'Forbidden (scope)' });
++  }
++
++  const ts = b.timestamp ? new Date(b.timestamp) : new Date();
++  if(Number.isNaN(ts.getTime())) return json(res, 400, { error: 'Invalid timestamp' });
++
++  const r = await q(
++    `insert into communications(timestamp, from_agent, to_agent, summary, scope, message_type)
++     values ($1,$2,$3,$4,$5,$6)
++     returning id`,
++    [ts.toISOString(), b.from_agent || null, b.to_agent || null, b.summary, b.scope, b.message_type || null]
++  );
++
++  return json(res, 200, { ok: true, id: r.rows[0].id });
++}));
+diff --git a/api/communications/list.js b/api/communications/list.js
+new file mode 100644
+index 0000000..3ad2db1
+--- /dev/null
++++ b/api/communications/list.js
+@@ -0,0 +1,36 @@
++import { json } from '../../lib/auth.js';
++import { q } from '../../lib/db.js';
++import { withAuth } from '../../lib/middleware.js';
++
++export default withAuth(async function handler(req, res){
++  const url = new URL(req.url, `http://${req.headers.host}`);
++  const agent = (url.searchParams.get('agent') || '').trim().slice(0, 80);
++
++  const params = [];
++  const where = [];
++
++  if(req.user.scopeView !== 'all'){
++    params.push(req.user.scopeView);
++    where.push(`scope=$${params.length}`);
++  }
++
++  if(agent){
++    params.push(agent);
++    where.push(`(from_agent=$${params.length} or to_agent=$${params.length})`);
++  }
++
++  const whereSql = where.length ? ('where ' + where.join(' and ')) : '';
++
++  const r = await q(
++    `select id, scope,
++            to_char(timestamp, 'YYYY-MM-DD HH24:MI') as timestamp,
++            from_agent, to_agent, message_type, summary
++     from communications
++     ${whereSql}
++     order by timestamp desc, id desc
++     limit 600`,
++    params
++  );
++
++  return json(res, 200, { rows: r.rows });
++});
+diff --git a/api/decisions/add.js b/api/decisions/add.js
+new file mode 100644
+index 0000000..c576bfd
+--- /dev/null
++++ b/api/decisions/add.js
+@@ -0,0 +1,40 @@
++import { z } from 'zod';
++import { json } from '../../lib/auth.js';
++import { q } from '../../lib/db.js';
++import { withAuth, allowRoles } from '../../lib/middleware.js';
++
++const Body = z.object({
++  date: z.string().optional(),
++  decision: z.string().min(1),
++  context: z.string().optional().nullable(),
++  decided_by: z.string().optional().nullable(),
++  scope: z.enum(['adhiratha','personal','minervainfo'])
++});
++
++function toDateOrNull(s){
++  if(!s) return null;
++  const m = String(s).match(/^\d{4}-\d{2}-\d{2}$/);
++  return m ? s : null;
++}
++
++export default withAuth(allowRoles(['Admin','Team'], async function handler(req, res){
++  if(req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
++  const parsed = Body.safeParse(JSON.parse(req.body || '{}'));
++  if(!parsed.success) return json(res, 400, { error: 'Invalid payload' });
++
++  const b = parsed.data;
++  if(req.user.scopeView !== 'all' && b.scope !== req.user.scopeView){
++    return json(res, 403, { error: 'Forbidden (scope)' });
++  }
++
++  const date = toDateOrNull(b.date) || null;
++
++  const r = await q(
++    `insert into decisions(date, decision, context, decided_by, scope)
++     values (coalesce($1, now()::date), $2, $3, $4, $5)
++     returning id`,
++    [date, b.decision, b.context || null, b.decided_by || null, b.scope]
++  );
++
++  return json(res, 200, { ok: true, id: r.rows[0].id });
++}));
+diff --git a/api/decisions/list.js b/api/decisions/list.js
+new file mode 100644
+index 0000000..74350f4
+--- /dev/null
++++ b/api/decisions/list.js
+@@ -0,0 +1,33 @@
++import { json } from '../../lib/auth.js';
++import { q } from '../../lib/db.js';
++import { withAuth } from '../../lib/middleware.js';
++
++export default withAuth(async function handler(req, res){
++  const url = new URL(req.url, `http://${req.headers.host}`);
++  const qStr = (url.searchParams.get('q') || '').trim().slice(0, 200);
++
++  const params = [];
++  const where = [];
++
++  if(req.user.scopeView !== 'all'){
++    params.push(req.user.scopeView);
++    where.push(`scope=$${params.length}`);
++  }
++  if(qStr){
++    params.push('%' + qStr + '%');
++    where.push(`(decision ilike $${params.length} or context ilike $${params.length} or decided_by ilike $${params.length})`);
++  }
++
++  const whereSql = where.length ? ('where ' + where.join(' and ')) : '';
++
++  const r = await q(
++    `select id, scope, to_char(date, 'YYYY-MM-DD') as date, decision, context, decided_by
++     from decisions
++     ${whereSql}
++     order by date desc, id desc
++     limit 500`,
++    params
++  );
++
++  return json(res, 200, { rows: r.rows });
++});
+diff --git a/api/overview/home.js b/api/overview/home.js
+new file mode 100644
+index 0000000..8d83560
+--- /dev/null
++++ b/api/overview/home.js
+@@ -0,0 +1,67 @@
++import { json } from '../../lib/auth.js';
++import { q } from '../../lib/db.js';
++import { withAuth } from '../../lib/middleware.js';
++
++export default withAuth(async function handler(req, res){
++  const scopeWhere = req.user.scopeView === 'all' ? '' : `where scope='${req.user.scopeView}'`;
++  const scopeAnd = req.user.scopeView === 'all' ? '' : `and scope='${req.user.scopeView}'`;
++
++  const counts = await q(
++    `select
++      count(*)::int as total,
++      sum(case when status='In Progress' then 1 else 0 end)::int as in_progress,
++      sum(case when status='Blocked' then 1 else 0 end)::int as blocked,
++      sum(case when status='Done' then 1 else 0 end)::int as done
++     from tasks
++     ${scopeWhere}`,
++    []
++  );
++
++  const upcomingReminders = await q(
++    `select id, title, to_char(due_date,'YYYY-MM-DD') as due_date, priority, category, scope
++     from reminders
++     where status='Open'
++     ${scopeAnd}
++     order by due_date asc nulls last, id desc
++     limit 8`,
++    []
++  );
++
++  const team = await q(
++    `select agent, status, to_char(last_activity_at, 'YYYY-MM-DD HH24:MI') as last_activity_at, details
++     from agent_activity
++     ${scopeWhere}
++     order by agent asc
++     limit 50`,
++    []
++  );
++
++  const activity = await q(
++    `select to_char(timestamp, 'YYYY-MM-DD HH24:MI') as ts, from_agent, to_agent, summary, message_type, scope
++     from communications
++     where timestamp >= now() - interval '14 days'
++     ${scopeAnd}
++     order by timestamp desc
++     limit 25`,
++    []
++  );
++
++  const burn = await q(
++    `select to_char(date_trunc('day', used_at), 'YYYY-MM-DD') as day,
++            sum(input_tokens+output_tokens)::bigint as total_tokens
++     from token_usage
++     where used_at >= now() - interval '21 days'
++     ${scopeAnd}
++     group by 1
++     order by 1 asc`,
++    []
++  );
++
++  return json(res, 200, {
++    counts: counts.rows[0],
++    reminders: upcomingReminders.rows,
++    team: team.rows,
++    activity: activity.rows,
++    tokenBurnDaily: burn.rows
++  });
++});
+diff --git a/api/reminders/list.js b/api/reminders/list.js
+new file mode 100644
+index 0000000..8eba1a2
+--- /dev/null
++++ b/api/reminders/list.js
+@@ -0,0 +1,37 @@
++import { json } from '../../lib/auth.js';
++import { q } from '../../lib/db.js';
++import { withAuth } from '../../lib/middleware.js';
++
++export default withAuth(async function handler(req, res){
++  const url = new URL(req.url, `http://${req.headers.host}`);
++  const status = (url.searchParams.get('status') || '').trim();
++
++  const params = [];
++  const where = [];
++
++  if(req.user.scopeView !== 'all'){
++    params.push(req.user.scopeView);
++    where.push(`scope=$${params.length}`);
++  }
++  if(status){
++    params.push(status);
++    where.push(`status=$${params.length}`);
++  }
++
++  const whereSql = where.length ? ('where ' + where.join(' and ')) : '';
++
++  const r = await q(
++    `select id, scope, title,
++            to_char(due_date, 'YYYY-MM-DD') as due_date,
++            priority, category, status,
++            to_char(updated_at, 'YYYY-MM-DD HH24:MI') as updated_at,
++            created_by
++     from reminders
++     ${whereSql}
++     order by (case when status='Open' then 0 else 1 end), due_date asc nulls last, id desc
++     limit 500`,
++    params
++  );
++
++  return json(res, 200, { rows: r.rows });
++});
+diff --git a/api/reminders/upsert.js b/api/reminders/upsert.js
+new file mode 100644
+index 0000000..d80d8f7
+--- /dev/null
++++ b/api/reminders/upsert.js
+@@ -0,0 +1,57 @@
++import { z } from 'zod';
++import { json } from '../../lib/auth.js';
++import { q } from '../../lib/db.js';
++import { withAuth, allowRoles } from '../../lib/middleware.js';
++
++const Body = z.object({
++  id: z.union([z.number(), z.string()]).optional(),
++  title: z.string().min(1),
++  due_date: z.string().optional().nullable(),
++  priority: z.enum(['P1','P2','P3']).optional(),
++  category: z.enum(['personal','work','follow-up']).optional(),
++  status: z.enum(['Open','Done']).optional(),
++  scope: z.enum(['adhiratha','personal','minervainfo'])
++});
++
++function toDateOrNull(s){
++  if(!s) return null;
++  const m = String(s).match(/^\d{4}-\d{2}-\d{2}$/);
++  return m ? s : null;
++}
++
++export default withAuth(allowRoles(['Admin','Team'], async function handler(req, res){
++  if(req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
++  const parsed = Body.safeParse(JSON.parse(req.body || '{}'));
++  if(!parsed.success) return json(res, 400, { error: 'Invalid payload' });
++
++  const b = parsed.data;
++  if(req.user.scopeView !== 'all' && b.scope !== req.user.scopeView){
++    return json(res, 403, { error: 'Forbidden (scope)' });
++  }
++
++  const due = toDateOrNull(b.due_date);
++  const created_by = req.user.email;
++
++  if(b.id){
++    const id = Number(b.id);
++    const scopeGuard = req.user.scopeView === 'all' ? '' : `and scope='${req.user.scopeView}'`;
++    const r = await q(
++      `update reminders
++       set title=$1, due_date=$2, priority=$3, category=$4, status=$5, scope=$6,
++           updated_at=now()
++       where id=$7 ${scopeGuard}
++       returning id`,
++      [b.title, due, b.priority || 'P2', b.category || 'work', b.status || 'Open', b.scope, id]
++    );
++    if(r.rowCount === 0) return json(res, 404, { error: 'Reminder not found (or not permitted)' });
++    return json(res, 200, { ok: true, id });
++  }
++
++  const r = await q(
++    `insert into reminders(title, due_date, priority, category, status, scope, created_by)
++     values ($1,$2,$3,$4,$5,$6,$7)
++     returning id`,
++    [b.title, due, b.priority || 'P2', b.category || 'work', b.status || 'Open', b.scope, created_by]
++  );
++  return json(res, 200, { ok: true, id: r.rows[0].id });
++}));
+diff --git a/api/tasks/list.js b/api/tasks/list.js
+index 2bd8673..24ff64f 100644
+--- a/api/tasks/list.js
++++ b/api/tasks/list.js
+@@ -2,16 +2,44 @@ import { json } from '../../lib/auth.js';
+ import { q } from '../../lib/db.js';
+ import { withAuth } from '../../lib/middleware.js';
+ 
++function clampStr(s, n=80){
++  return (s || '').toString().slice(0, n);
++}
++
+ export default withAuth(async function handler(req, res){
+-  const scopeWhere = req.user.scopeView === 'all' ? '' : `where scope = '${req.user.scopeView}'`;
++  const url = new URL(req.url, `http://${req.headers.host}`);
++  const scope = clampStr(url.searchParams.get('scope') || '');
++  const owner = clampStr(url.searchParams.get('owner') || '');
++  const priority = clampStr(url.searchParams.get('priority') || '');
++  const status = clampStr(url.searchParams.get('status') || '');
++
++  const where = [];
++  const params = [];
++
++  if(req.user.scopeView !== 'all'){
++    params.push(req.user.scopeView);
++    where.push(`scope=$${params.length}`);
++  }else if(scope){
++    params.push(scope);
++    where.push(`scope=$${params.length}`);
++  }
++
++  if(owner){ params.push(owner); where.push(`owner=$${params.length}`); }
++  if(priority){ params.push(priority); where.push(`priority=$${params.length}`); }
++  if(status){ params.push(status); where.push(`status=$${params.length}`); }
++
++  const whereSql = where.length ? ('where ' + where.join(' and ')) : '';
++
+   const r = await q(
+     `select id, scope, area, title, owner, priority, status, source,
++            to_char(start_date, 'YYYY-MM-DD') as start_date,
++            to_char(due_date, 'YYYY-MM-DD') as due_date,
+             to_char(updated_at, 'YYYY-MM-DD HH24:MI') as updated_at
+      from tasks
+-     ${scopeWhere}
++     ${whereSql}
+      order by updated_at desc
+-     limit 400`,
+-    []
++     limit 800`,
++    params
+   );
+   return json(res, 200, { rows: r.rows });
+ });
+diff --git a/api/tasks/sync.js b/api/tasks/sync.js
+index e01c117..c997f0d 100644
+--- a/api/tasks/sync.js
++++ b/api/tasks/sync.js
+@@ -42,8 +42,10 @@ function parseTracker(md){
+ export default withAuth(allowRoles(['Admin','Team'], async function handler(req, res){
+   if(req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
+ 
+-  const trackerPath = path.join(process.cwd(), 'TRACKER.md');
+-  if(!fs.existsSync(trackerPath)) return json(res, 404, { error: 'TRACKER.md not found in repo' });
++  const trackerPath = process.env.TRACKER_PATH
++    ? path.resolve(process.env.TRACKER_PATH)
++    : path.join(process.cwd(), 'TRACKER.md');
++  if(!fs.existsSync(trackerPath)) return json(res, 404, { error: `TRACKER.md not found at ${trackerPath}` });
+ 
+   const md = fs.readFileSync(trackerPath, 'utf8');
+   const tasks = parseTracker(md);
+diff --git a/api/tasks/upsert.js b/api/tasks/upsert.js
+new file mode 100644
+index 0000000..52d446f
+--- /dev/null
++++ b/api/tasks/upsert.js
+@@ -0,0 +1,61 @@
++import { z } from 'zod';
++import { json } from '../../lib/auth.js';
++import { q } from '../../lib/db.js';
++import { withAuth, allowRoles } from '../../lib/middleware.js';
++
++const Body = z.object({
++  id: z.union([z.number(), z.string()]).optional(),
++  scope: z.enum(['adhiratha','personal','minervainfo']),
++  area: z.string().optional().nullable(),
++  title: z.string().min(1),
++  owner: z.string().optional().nullable(),
++  priority: z.enum(['P1','P2','P3']).optional().nullable(),
++  status: z.enum(['Todo','In Progress','Blocked','Done']).optional(),
++  start_date: z.string().optional().nullable(), // YYYY-MM-DD
++  due_date: z.string().optional().nullable(),
++});
++
++function toDateOrNull(s){
++  if(!s) return null;
++  const m = String(s).match(/^\d{4}-\d{2}-\d{2}$/);
++  return m ? s : null;
++}
++
++export default withAuth(allowRoles(['Admin','Team'], async function handler(req, res){
++  if(req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
++  const parsed = Body.safeParse(JSON.parse(req.body || '{}'));
++  if(!parsed.success) return json(res, 400, { error: 'Invalid payload' });
++
++  const b = parsed.data;
++  if(req.user.scopeView !== 'all' && b.scope !== req.user.scopeView){
++    return json(res, 403, { error: 'Forbidden (scope)' });
++  }
++
++  const start_date = toDateOrNull(b.start_date);
++  const due_date = toDateOrNull(b.due_date);
++
++  if(b.id){
++    const id = Number(b.id);
++    const scopeGuard = req.user.scopeView === 'all' ? '' : `and scope = '${req.user.scopeView}'`;
++    const r = await q(
++      `update tasks
++       set scope=$1, area=$2, title=$3, owner=$4, priority=$5, status=$6,
++           start_date=$7, due_date=$8,
++           completed_at = case when $6='Done' then coalesce(completed_at, now()) else null end,
++           updated_at=now()
++       where id=$9 ${scopeGuard}
++       returning id`,
++      [b.scope, b.area || null, b.title, b.owner || null, b.priority || null, b.status || 'Todo', start_date, due_date, id]
++    );
++    if(r.rowCount === 0) return json(res, 404, { error: 'Task not found (or not permitted)' });
++    return json(res, 200, { ok: true, id });
++  }
++
++  const r = await q(
++    `insert into tasks(scope, area, title, owner, priority, status, start_date, due_date, source)
++     values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
++     returning id`,
++    [b.scope, b.area || null, b.title, b.owner || null, b.priority || null, b.status || 'Todo', start_date, due_date, 'UI']
++  );
++  return json(res, 200, { ok: true, id: r.rows[0].id });
++}));
+diff --git a/api/team/visibility.js b/api/team/visibility.js
+new file mode 100644
+index 0000000..9efaf36
+--- /dev/null
++++ b/api/team/visibility.js
+@@ -0,0 +1,52 @@
++import { json } from '../../lib/auth.js';
++import { q } from '../../lib/db.js';
++import { withAuth } from '../../lib/middleware.js';
++
++export default withAuth(async function handler(req, res){
++  const scopeWhere = req.user.scopeView === 'all' ? '' : `where scope='${req.user.scopeView}'`;
++  const scopeAnd = req.user.scopeView === 'all' ? '' : `and scope='${req.user.scopeView}'`;
++
++  const agents = await q(
++    `select agent, status, to_char(last_activity_at, 'YYYY-MM-DD HH24:MI') as last_activity_at, details, scope
++     from agent_activity
++     ${scopeWhere}
++     order by agent asc`,
++    []
++  );
++
++  const inprog = await q(
++    `select owner as agent, count(*)::int as in_progress
++     from tasks
++     where status='In Progress'
++     ${scopeAnd}
++     group by owner
++     order by in_progress desc`,
++    []
++  );
++
++  const tokens = await q(
++    `select agent, sum(input_tokens+output_tokens)::bigint as total_tokens
++     from token_usage
++     where used_at >= now() - interval '7 days'
++     ${scopeAnd}
++     group by agent
++     order by total_tokens desc`,
++    []
++  );
++
++  const recentComms = await q(
++    `select from_agent as agent, max(timestamp) as last_ts
++     from communications
++     where timestamp >= now() - interval '14 days'
++     ${scopeAnd}
++     group by from_agent`,
++    []
++  );
++
++  return json(res, 200, {
++    agents: agents.rows,
++    inProgressByAgent: inprog.rows,
++    tokensByAgent: tokens.rows,
++    recentCommsByAgent: recentComms.rows
++  });
++});
+diff --git a/package.json b/package.json
+index 66d327d..b9ee09d 100644
+--- a/package.json
++++ b/package.json
+@@ -9,6 +9,7 @@
+   },
+   "scripts": {
+     "dev": "vercel dev",
++    "migrate": "node scripts/migrate.js",
+     "lint": "node -c api/_lib/auth.js >/dev/null 2>&1 || true"
+   },
+   "dependencies": {
+diff --git a/public/styles.css b/public/styles.css
+index 9f89238..a088d2a 100644
+--- a/public/styles.css
++++ b/public/styles.css
+@@ -43,3 +43,39 @@ input{padding:10px 12px;border-radius:10px;border:1px solid var(--border);backgr
+ .badge--ok{color:var(--ok);border-color:rgba(53,208,127,.35)}
+ .badge--bad{color:var(--danger);border-color:rgba(255,107,107,.35)}
+ .select{padding:7px 8px;border-radius:10px;border:1px solid var(--border);background:#0b1230;color:var(--text)}
++
++.btn--sm{padding:7px 10px;font-size:13px}
++
++.kpiGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
++@media (min-width: 980px){.kpiGrid{grid-template-columns:repeat(4,1fr)}}
++.kpi{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:12px;padding:12px}
++.kpi__label{color:var(--muted);font-size:12px}
++.kpi__value{font-size:26px;font-weight:800;margin-top:4px}
++
++.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
++.filters input{min-width:200px}
++
++.board{display:grid;grid-template-columns:1fr;gap:12px}
++@media (min-width: 980px){.board{grid-template-columns:repeat(4,1fr)}}
++.col{border:1px solid var(--border);border-radius:14px;background:rgba(255,255,255,.02);min-height:240px;display:flex;flex-direction:column}
++.col__head{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:700}
++.col__body{padding:10px;display:flex;flex-direction:column;gap:10px}
++
++.taskCard{border:1px solid var(--border);border-radius:12px;padding:10px;background:linear-gradient(180deg,rgba(18,26,51,.9),rgba(15,23,48,.8));cursor:pointer}
++.taskCard:hover{border-color:rgba(122,162,255,.6)}
++.taskCard__title{font-weight:800;font-size:13px}
++.taskCard__meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
++.taskCard__meta .badge{font-size:11px}
++.taskCard__dates{margin-top:6px;color:var(--muted);font-size:12px}
++
++.list{display:flex;flex-direction:column;gap:10px}
++.item{border:1px solid var(--border);border-radius:12px;padding:10px;background:rgba(255,255,255,.02)}
++.item__title{font-weight:800;font-size:13px}
++.item__meta{margin-top:4px;color:var(--muted);font-size:12px;display:flex;gap:8px;flex-wrap:wrap}
++
++.modal::backdrop{background:rgba(0,0,0,.55)}
++.modal{border:none;padding:0;background:transparent;max-width:720px;width:92%}
++.modal__card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--border);border-radius:14px;padding:16px}
++.modal__body{display:grid;gap:12px;margin-top:12px}
++.modal__body label{color:var(--muted)}
++.modal__body textarea{min-height:110px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:#0b1230;color:var(--text);resize:vertical}
+diff --git a/scripts/migrate.js b/scripts/migrate.js
+new file mode 100644
+index 0000000..30e5113
+--- /dev/null
++++ b/scripts/migrate.js
+@@ -0,0 +1,26 @@
++import fs from 'node:fs';
++import path from 'node:path';
++import { getPool } from '../lib/db.js';
++
++async function main(){
++  const schemaPath = path.join(process.cwd(), 'schema.sql');
++  const sql = fs.readFileSync(schemaPath, 'utf8');
++
++  const pool = getPool();
++  const client = await pool.connect();
++  try{
++    await client.query('begin');
++    await client.query(sql);
++    await client.query('commit');
++    console.log('✅ Migration applied from schema.sql');
++  }catch(e){
++    await client.query('rollback');
++    console.error('❌ Migration failed:', e);
++    process.exitCode = 1;
++  }finally{
++    client.release();
++    await pool.end();
++  }
++}
++
++main();
+-- 
+2.43.0
+

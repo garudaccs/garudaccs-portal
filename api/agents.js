@@ -1,6 +1,6 @@
-import { json } from '../../lib/auth.js';
-import { q } from '../../lib/db.js';
-import { withAuth } from '../../lib/middleware.js';
+import { json } from '../lib/auth.js';
+import { q } from '../lib/db.js';
+import { withAuth } from '../lib/middleware.js';
 
 export default withAuth(async function handler(req, res){
   const scopeWhere = req.user.scopeView === 'all' ? '' : `where scope = '${req.user.scopeView}'`;

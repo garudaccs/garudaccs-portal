@@ -31,7 +31,7 @@ $('#requestForm').addEventListener('submit', async (e) => {
   const bootstrapSecret = String(fd.get('bootstrapSecret') || '').trim();
 
   try{
-    const data = await api('/api/auth/request.js', { method:'POST', body: { email, bootstrapSecret: bootstrapSecret || undefined } });
+    const data = await api('/api/auth.js?action=request', { method:'POST', body: { email, bootstrapSecret: bootstrapSecret || undefined } });
     lastEmail = email;
 
     if(data?.devCode){
@@ -57,7 +57,7 @@ $('#verifyForm').addEventListener('submit', async (e) => {
   const email = lastEmail;
 
   try{
-    const data = await api('/api/auth/verify.js', { method:'POST', body: { email, code } });
+    const data = await api('/api/auth.js?action=verify', { method:'POST', body: { email, code } });
     // token is also set as HttpOnly cookie; keep a local copy for Authorization header fallbacks.
     localStorage.setItem('gccs_token', data.token);
     window.location.href = '/';

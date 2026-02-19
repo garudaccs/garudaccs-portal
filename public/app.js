@@ -57,7 +57,7 @@ function toBadgeStatus(status){
 }
 
 async function loadMe(){
-  state.me = await api('/api/auth/me.js');
+  state.me = await api('/api/auth.js?action=me');
   setWhoami();
   $('#scopeHint').textContent = `You can view: ${state.me.scopeView}`;
 }
@@ -68,7 +68,7 @@ function ensureChartsDestroyed(){
 }
 
 async function loadOverview(){
-  const data = await api('/api/tokens/summary.js?days=14');
+  const data = await api('/api/tokens.js?mode=summary?days=14');
   ensureChartsDestroyed();
 
   const ctxModel = $('#chartModel');
@@ -93,7 +93,7 @@ async function loadOverview(){
 }
 
 async function loadTokensTable(){
-  const data = await api('/api/tokens/list.js?days=14');
+  const data = await api('/api/tokens.js?days=14');
   const tbody = $('#tokensTable tbody');
   tbody.innerHTML = '';
   for(const r of data.rows){
@@ -112,7 +112,7 @@ async function loadTokensTable(){
 }
 
 async function loadAgentsTable(){
-  const data = await api('/api/agents/list.js');
+  const data = await api('/api/agents.js');
   const tbody = $('#agentsTable tbody');
   tbody.innerHTML = '';
   for(const a of data.rows){
@@ -128,7 +128,7 @@ async function loadAgentsTable(){
 }
 
 async function loadTasksTable(){
-  const data = await api('/api/tasks/list.js');
+  const data = await api('/api/tasks.js');
   const tbody = $('#tasksTable tbody');
   tbody.innerHTML = '';
 
@@ -157,7 +157,7 @@ async function loadTasksTable(){
     $$('#tasksTable select[data-task-id]').forEach(sel => {
       sel.addEventListener('change', async () => {
         try{
-          await api('/api/tasks/update.js', { method:'POST', body: { id: sel.dataset.taskId, status: sel.value } });
+          await api('/api/tasks.js', { method:'POST', body: { id: sel.dataset.taskId, status: sel.value } });
           setMsg($('#appMsg'), 'Task updated.', '');
           await loadTasksTable();
         }catch(e){
@@ -186,7 +186,7 @@ async function init(){
 }
 
 $('#logoutBtn').addEventListener('click', async () => {
-  try{ await api('/api/auth/logout.js', { method:'POST' }); }catch{}
+  try{ await api('/api/auth.js?action=logout', { method:'POST' }); }catch{}
   localStorage.removeItem('gccs_token');
   window.location.href = '/login';
 });
@@ -204,7 +204,7 @@ $('#refreshTasks').addEventListener('click', async () => {
   catch(e){ setMsg($('#appMsg'), e.message); }
 });
 $('#syncTasks').addEventListener('click', async () => {
-  try{ await api('/api/tasks/sync.js', { method:'POST' }); await loadTasksTable(); setMsg($('#appMsg'), 'Synced from TRACKER.md.'); }
+  try{ await api('/api/tasks-sync.js', { method:'POST' }); await loadTasksTable(); setMsg($('#appMsg'), 'Synced from TRACKER.md.'); }
   catch(e){ setMsg($('#appMsg'), e.message); }
 });
 
