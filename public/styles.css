@@ -43,3 +43,39 @@ input{padding:10px 12px;border-radius:10px;border:1px solid var(--border);backgr
 .badge--ok{color:var(--ok);border-color:rgba(53,208,127,.35)}
 .badge--bad{color:var(--danger);border-color:rgba(255,107,107,.35)}
 .select{padding:7px 8px;border-radius:10px;border:1px solid var(--border);background:#0b1230;color:var(--text)}
+
+.btn--sm{padding:7px 10px;font-size:13px}
+
+.kpiGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media (min-width: 980px){.kpiGrid{grid-template-columns:repeat(4,1fr)}}
+.kpi{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:12px;padding:12px}
+.kpi__label{color:var(--muted);font-size:12px}
+.kpi__value{font-size:26px;font-weight:800;margin-top:4px}
+
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.filters input{min-width:200px}
+
+.board{display:grid;grid-template-columns:1fr;gap:12px}
+@media (min-width: 980px){.board{grid-template-columns:repeat(4,1fr)}}
+.col{border:1px solid var(--border);border-radius:14px;background:rgba(255,255,255,.02);min-height:240px;display:flex;flex-direction:column}
+.col__head{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:700}
+.col__body{padding:10px;display:flex;flex-direction:column;gap:10px}
+
+.taskCard{border:1px solid var(--border);border-radius:12px;padding:10px;background:linear-gradient(180deg,rgba(18,26,51,.9),rgba(15,23,48,.8));cursor:pointer}
+.taskCard:hover{border-color:rgba(122,162,255,.6)}
+.taskCard__title{font-weight:800;font-size:13px}
+.taskCard__meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.taskCard__meta .badge{font-size:11px}
+.taskCard__dates{margin-top:6px;color:var(--muted);font-size:12px}
+
+.list{display:flex;flex-direction:column;gap:10px}
+.item{border:1px solid var(--border);border-radius:12px;padding:10px;background:rgba(255,255,255,.02)}
+.item__title{font-weight:800;font-size:13px}
+.item__meta{margin-top:4px;color:var(--muted);font-size:12px;display:flex;gap:8px;flex-wrap:wrap}
+
+.modal::backdrop{background:rgba(0,0,0,.55)}
+.modal{border:none;padding:0;background:transparent;max-width:720px;width:92%}
+.modal__card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--border);border-radius:14px;padding:16px}
+.modal__body{display:grid;gap:12px;margin-top:12px}
+.modal__body label{color:var(--muted)}
+.modal__body textarea{min-height:110px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:#0b1230;color:var(--text);resize:vertical}

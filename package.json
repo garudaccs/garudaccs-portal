@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "vercel dev",
+    "migrate": "node scripts/migrate.js",
     "lint": "node -c api/_lib/auth.js >/dev/null 2>&1 || true"
   },
   "dependencies": {

@@ -42,8 +42,10 @@ function parseTracker(md){
 export default withAuth(allowRoles(['Admin','Team'], async function handler(req, res){
   if(req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
 
-  const trackerPath = path.join(process.cwd(), 'TRACKER.md');
-  if(!fs.existsSync(trackerPath)) return json(res, 404, { error: 'TRACKER.md not found in repo' });
+  const trackerPath = process.env.TRACKER_PATH
+    ? path.resolve(process.env.TRACKER_PATH)
+    : path.join(process.cwd(), 'TRACKER.md');
+  if(!fs.existsSync(trackerPath)) return json(res, 404, { error: `TRACKER.md not found at ${trackerPath}` });
 
   const md = fs.readFileSync(trackerPath, 'utf8');
   const tasks = parseTracker(md);
