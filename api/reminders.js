@@ -28,7 +28,7 @@ async function listHandler(req, res){
 
 async function upsertHandler(req, res){
   if(req.user.role !== 'Admin' && req.user.role !== 'Team') return json(res, 403, { error: 'Forbidden' });
-  const parsed = Body.safeParse(JSON.parse(req.body || '{}'));
+  const parsed = Body.safeParse((typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})));
   if(!parsed.success) return json(res, 400, { error: 'Invalid payload' });
   const b = parsed.data;
   if(req.user.scopeView !== 'all' && b.scope !== req.user.scopeView) return json(res, 403, { error: 'Forbidden (scope)' });

@@ -12,7 +12,7 @@ const Body = z.object({
 export default async function handler(req, res){
   if(req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
 
-  const parsed = Body.safeParse(JSON.parse(req.body || '{}'));
+  const parsed = Body.safeParse((typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})));
   if(!parsed.success) return json(res, 400, { error: 'Invalid payload' });
 
   if(!process.env.BOOTSTRAP_SECRET) return json(res, 500, { error: 'BOOTSTRAP_SECRET not set' });

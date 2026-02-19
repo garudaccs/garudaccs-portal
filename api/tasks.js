@@ -42,7 +42,7 @@ async function listHandler(req, res){
 
 async function postHandler(req, res){
   if(req.user.role !== 'Admin' && req.user.role !== 'Team') return json(res, 403, { error: 'Forbidden' });
-  const body = JSON.parse(req.body || '{}');
+  const body = (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}));
   // Quick status update (has id+status only, no title)
   if(body.id && body.status && !body.title){
     const parsed = UpdateBody.safeParse(body);
