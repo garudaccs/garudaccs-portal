@@ -12,7 +12,7 @@ const LoginBody = z.object({
 
 async function loginHandler(req, res){
   let payload = {};
-  try{ payload = JSON.parse(req.body || '{}'); }catch{}
+  try{ payload = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); }catch{}
   const parsed = LoginBody.safeParse(payload);
   if(!parsed.success) return json(res, 400, { error: 'Email and password are required.' });
 
