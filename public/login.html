@@ -17,33 +17,17 @@
   <main class="container">
     <section class="card">
       <h1>Sign in</h1>
-      <p class="muted">Magic-link style login (temporary on-screen code for Admins until email is wired).</p>
 
-      <form id="requestForm" class="form">
+      <form id="loginForm" class="form">
         <label>
           Email
           <input name="email" type="email" autocomplete="username" required />
         </label>
         <label>
-          Bootstrap Secret (optional)
-          <input name="bootstrapSecret" type="password" autocomplete="off" />
+          Password
+          <input name="password" type="password" autocomplete="current-password" required />
         </label>
-        <button class="btn" type="submit">Send code</button>
-      </form>
-
-      <div id="devCodeWrap" class="mt" style="display:none;">
-        <div class="panel">
-          <div class="muted">Temporary code (Admin / Bootstrap only):</div>
-          <div style="font-size:28px;font-weight:900;letter-spacing:2px;" id="devCode"></div>
-        </div>
-      </div>
-
-      <form id="verifyForm" class="form mt" style="display:none;">
-        <label>
-          Code
-          <input name="code" inputmode="numeric" autocomplete="one-time-code" required />
-        </label>
-        <button class="btn" type="submit">Verify &amp; Continue</button>
+        <button class="btn" type="submit">Sign in</button>
       </form>
 
       <div id="msg" class="msg"></div>
