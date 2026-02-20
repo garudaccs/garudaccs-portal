@@ -128,21 +128,8 @@ function html(){
 }
 
 export default async function handler(req, res){
-  try{
-    const cookies = parseCookies(req.headers.cookie || '');
-    const token = cookies.gccs_token;
-    if(!token){
-      res.statusCode = 302;
-      res.setHeader('Location', '/login');
-      return res.end('Redirecting to /login');
-    }
-    verifyToken(token);
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.end(html());
-  }catch{
-    res.statusCode = 302;
-    res.setHeader('Location', '/login');
-    return res.end('Redirecting to /login');
-  }
+  // Auth is handled client-side by app.js init() — no server redirect needed
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  return res.end(html());
 }
